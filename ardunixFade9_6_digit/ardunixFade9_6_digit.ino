@@ -7,77 +7,66 @@
 //*  - Configuration stored in EEPROM                                              *
 //*  - Low hardware component count (as much as possible done in code)             *
 //*  - Single button operation with software debounce                              *
-//*  - Single K155ID1 for digit display (other versions use 2 or even 6!)          *
-//*  - Automatic dimming, using a Light Dependent Resistor                         *
+//*  - Single 74141 for digit display (other versions use 2 or even 6!)            *
+//*  - Automatic dimming, using a Light Dependent Resistor,REMOVED to              *
+//*  accomodate 4 additional buttons for hour and minute increment/decrement       *
+//*  Modded by, S.Ferguson
 //*  - RGB back light management                                                   *
 //*                                                                                *
 //*  nixie@protonmail.ch                                                           *
 //*                                                                                *
 //**********************************************************************************
 //**********************************************************************************
-// Standard Libraries
 #include <avr/io.h>
 #include <EEPROM.h>
-#include <Wire.h>
-
-// Clock specific libraries, install these with "Sketch -> Include Library -> Add .ZIP library
-// using the ZIP files in the "libraries" directory
 #include <DS3231.h>
+#include <Wire.h>
 #include <TimeLib.h>
-
-// Other parts of the code, broken out for clarity
-#include "ClockButton.h"
-#include "Transition.h"
-#include "DisplayDefs.h"
-#include "I2CDefs.h"
 
 //**********************************************************************************
 //**********************************************************************************
 //*                               Constants                                        *
 //**********************************************************************************
 //**********************************************************************************
-#define EE_12_24              1      // 12 or 24 hour mode
-#define EE_FADE_STEPS         2      // How quickly we fade, higher = slower
-#define EE_DATE_FORMAT        3      // Date format to display
-#define EE_DAY_BLANKING       4      // Blanking setting
-#define EE_DIM_DARK_LO        5      // Dimming dark value
-#define EE_DIM_DARK_HI        6      // Dimming dark value
-#define EE_BLANK_LEAD_ZERO    7      // If we blank leading zero on hours
-#define EE_DIGIT_COUNT_HI     8      // The number of times we go round the main loop
-#define EE_DIGIT_COUNT_LO     9      // The number of times we go round the main loop
-#define EE_SCROLLBACK         10     // if we use scollback or not
-#define EE_FADE               11     // if we use fade or not
-#define EE_PULSE_LO           12     // The pulse on width for the PWM mode
-#define EE_PULSE_HI           13     // The pulse on width for the PWM mode
-#define EE_SCROLL_STEPS       14     // The steps in a scrollback
-#define EE_BACKLIGHT_MODE     15     // The back light node
-#define EE_DIM_BRIGHT_LO      16     // Dimming bright value
-#define EE_DIM_BRIGHT_HI      17     // Dimming bright value
-#define EE_DIM_SMOOTH_SPEED   18     // Dimming adaptation speed
-#define EE_RED_INTENSITY      19     // Red channel backlight max intensity
-#define EE_GRN_INTENSITY      20     // Green channel backlight max intensity
-#define EE_BLU_INTENSITY      21     // Blue channel backlight max intensity
-#define EE_HV_VOLTAGE         22     // The HV voltage we want to use
-#define EE_SUPPRESS_ACP       23     // Do we want to suppress ACP during dimmed time
-#define EE_HOUR_BLANK_START   24     // Start of daily blanking period
-#define EE_HOUR_BLANK_END     25     // End of daily blanking period
-#define EE_CYCLE_SPEED        26     // How fast the color cycling does it's stuff
-#define EE_PWM_TOP_LO         27     // The PWM top value if we know it, 0xFF if we need to calculate
-#define EE_PWM_TOP_HI         28     // The PWM top value if we know it, 0xFF if we need to calculate
-#define EE_HVG_NEED_CALIB     29     // 1 if we need to calibrate the HVGenerator, otherwise 0
-#define EE_MIN_DIM_LO         30     // The min dim value
-#define EE_MIN_DIM_HI         31     // The min dim value
-#define EE_ANTI_GHOST         32     // The value we use for anti-ghosting
-#define EE_NEED_SETUP         33     // used for detecting auto config for startup. By default the flashed, empty EEPROM shows us we need to do a setup 
-#define EE_USE_LDR            34     // if we use the LDR or not (if we don't use the LDR, it has 100% brightness
-#define EE_BLANK_MODE         35     // blank tubes, or LEDs or both
-#define EE_SLOTS_MODE         36     // Show date every now and again
+#define EE_12_24            1      // 12 or 24 hour mode
+#define EE_FADE_STEPS       2      // How quickly we fade, higher = slower
+#define EE_DATE_FORMAT      3      // Date format to display
+#define EE_DAY_BLANKING     4      // Blanking setting
+#define EE_DIM_DARK_LO      5      // Dimming dark value
+#define EE_DIM_DARK_HI      6      // Dimming dark value
+#define EE_BLANK_LEAD_ZERO  7      // If we blank leading zero on hours
+#define EE_DIGIT_COUNT_HI   8      // The number of times we go round the main loop
+#define EE_DIGIT_COUNT_LO   9      // The number of times we go round the main loop
+#define EE_SCROLLBACK       10     // if we use scollback or not
+#define EE_FADE             11     // if we use fade or not
+#define EE_PULSE_LO         12     // The pulse on width for the PWM mode
+#define EE_PULSE_HI         13     // The pulse on width for the PWM mode
+#define EE_SCROLL_STEPS     14     // The steps in a scrollback
+#define EE_BACKLIGHT_MODE   15     // The back light node
+#define EE_DIM_BRIGHT_LO    16     // Dimming bright value
+#define EE_DIM_BRIGHT_HI    17     // Dimming bright value
+#define EE_DIM_SMOOTH_SPEED 18     // Dimming adaptation speed
+#define EE_RED_INTENSITY    19     // Red channel backlight max intensity
+#define EE_GRN_INTENSITY    20     // Green channel backlight max intensity
+#define EE_BLU_INTENSITY    21     // Blue channel backlight max intensity
+#define EE_HV_VOLTAGE       22     // The HV voltage we want to use
+#define EE_SUPPRESS_ACP     23     // Do we want to suppress ACP during dimmed time
+#define EE_HOUR_BLANK_START 24     // Start of daily blanking period
+#define EE_HOUR_BLANK_END   25     // End of daily blanking period
+#define EE_CYCLE_SPEED      26     // How fast the color cycling does it's stuff
+#define EE_PWM_TOP_LO       27     // The PWM top value if we know it, 0xFF if we need to calculate
+#define EE_PWM_TOP_HI       28     // The PWM top value if we know it, 0xFF if we need to calculate
+#define EE_HVG_NEED_CALIB   29     // 1 if we need to calibrate the HVGenerator, otherwise 0
+#define EE_MIN_DIM_LO       30     // The min dim value
+#define EE_MIN_DIM_HI       31     // The min dim value
+#define EE_ANTI_GHOST       32     // The value we use for anti-ghosting
+#define EE_NEED_SETUP       33     // used for detecting auto config for startup. By default the flashed, empty EEPROM shows us we need to do a setup 
+#define EE_USE_LDR          34     // if we use the LDR or not (if we don't use the LDR, it has 100% brightness
+#define EE_BLANK_MODE       35     // blank tubes, or LEDs or both
+#define EE_SLOTS_MODE       36     // Show date every now and again
 
 // Software version shown in config menu
-#define SOFTWARE_VERSION      54
-
-// how often we make reference to the external time provider
-#define READ_TIME_PROVIDER_MILLIS 60000 // Update the internal time provider from the external source once every minute
+#define SOFTWARE_VERSION 49
 
 // Display handling
 #define DIGIT_DISPLAY_COUNT   1000 // The number of times to traverse inner fade loop per digit
@@ -110,11 +99,11 @@
 #define HVGEN_TARGET_VOLTAGE_MAX     200
 
 // The PWM parameters
-#define PWM_TOP_DEFAULT   10000
+#define PWM_TOP_DEFAULT   1000
 #define PWM_TOP_MIN       300
 #define PWM_TOP_MAX       10000
 #define PWM_PULSE_DEFAULT 200
-#define PWM_PULSE_MIN     100
+#define PWM_PULSE_MIN     50
 #define PWM_PULSE_MAX     500
 #define PWM_OFF_MIN       50
 
@@ -128,6 +117,15 @@
 #define FADE_STEPS_DEFAULT 50
 #define FADE_STEPS_MAX     200
 #define FADE_STEPS_MIN     20
+
+// Display mode, set per digit
+#define BLANKED  0
+#define DIMMED   1
+#define FADE     2
+#define NORMAL   3
+#define BLINK    4
+#define SCROLL   5
+#define BRIGHT   6
 
 #define SECS_MAX  60
 #define MINS_MAX  60
@@ -167,7 +165,7 @@
 #define MODE_SUPPRESS_ACP               15 // Mode "08" 1 = suppress ACP when fully dimmed
 #define SUPPRESS_ACP_DEFAULT            true
 #define MODE_USE_LDR                    16 // Mode "09" 1 = use LDR, 0 = don't (and have 100% brightness)
-#define MODE_USE_LDR_DEFAULT            true
+#define MODE_USE_LDR_DEFAULT            false //- modded to false by S.Ferguson to disable LDR in order to use Multi-button setup
 #define MODE_BLANK_MODE                 17 // Mode "10" 
 #define MODE_BLANK_MODE_DEFAULT         BLANK_MODE_BOTH
 
@@ -271,22 +269,41 @@
 
 #define USE_LDR_DEFAULT                 true
 
-// Limit on the length of time we stay in test mode
-#define TEST_MODE_MAX_MS                60000
+#define SLOTS_MODE_MIN                0
+#define SLOTS_MODE_NONE               0   // Don't use slots effect
+#define SLOTS_MODE_1M_SCR_SCR         1   // use slots effect every minute, scroll in, scramble out
+#define SLOTS_MODE_MAX                1
+#define SLOTS_MODE_DEFAULT            1
 
-#define SLOTS_MODE_MIN                  0
-#define SLOTS_MODE_NONE                 0   // Don't use slots effect
-#define SLOTS_MODE_1M_SCR_SCR           1   // use slots effect every minute, scroll in, scramble out
-#define SLOTS_MODE_MAX                  1
-#define SLOTS_MODE_DEFAULT              1
+// I2C Interface definition
+#define I2C_SLAVE_ADDR                0x68
+#define I2C_TIME_UPDATE               0x00
+#define I2C_GET_OPTIONS               0x01
+#define I2C_SET_OPTION_12_24          0x02
+#define I2C_SET_OPTION_BLANK_LEAD     0x03
+#define I2C_SET_OPTION_SCROLLBACK     0x04
+#define I2C_SET_OPTION_SUPPRESS_ACP   0x05
+#define I2C_SET_OPTION_DATE_FORMAT    0x06
+#define I2C_SET_OPTION_DAY_BLANKING   0x07
+#define I2C_SET_OPTION_BLANK_START    0x08
+#define I2C_SET_OPTION_BLANK_END      0x09
+#define I2C_SET_OPTION_FADE_STEPS     0x0a
+#define I2C_SET_OPTION_SCROLL_STEPS   0x0b
+#define I2C_SET_OPTION_BACKLIGHT_MODE 0x0c
+#define I2C_SET_OPTION_RED_CHANNEL    0x0d
+#define I2C_SET_OPTION_GREEN_CHANNEL  0x0e
+#define I2C_SET_OPTION_BLUE_CHANNEL   0x0f
+#define I2C_SET_OPTION_CYCLE_SPEED    0x10
+#define I2C_SHOW_IP_ADDR              0x11
+#define I2C_SET_OPTION_FADE           0x12
+#define I2C_SET_OPTION_USE_LDR        0x13
+#define I2C_SET_OPTION_BLANK_MODE     0x14
+#define I2C_SET_OPTION_SLOTS_MODE     0x15
 
-// RTC address
-#define RTC_I2C_ADDRESS                 0x68
-
-#define MAX_WIFI_TIME                  5
-
-#define DO_NOT_APPLY_LEAD_0_BLANK     false
-#define APPLY_LEAD_0_BLANK            true
+//for analog button read - added by S.Ferguson for multi-button input
+#define ERROR_WINDOW 20  // +/- this value
+#define BUTTONDELAY 90
+#define DEBUG_ON
 
 //**********************************************************************************
 //**********************************************************************************
@@ -329,7 +346,446 @@
 #define LDRPin      A1    // Package pin 24 // PC1 // Analog input for Light dependent resistor.
 
 //**********************************************************************************
+
+
+//**********************************************************************************
+//**********************************************************************************
+//*                               Globals Variable         - added by S.Ferguson                        *
+//**********************************************************************************
+//**********************************************************************************
+long buttonLastChecked = 0; // variable to limit the button getting checked every cycle
+//**********************************************************************************
+
+
+/**
+ * A class that displays a message by scrolling it into and out of the display
+ *
+ * Thanks judge!
+ */
+extern byte NumberArray[];
+extern byte displayType[];
+extern boolean scrollback;
+
+struct Transition {
+  /**
+   * Default the effect and hold duration.
+   */
+  Transition() : Transition(500, 500, 3000) {
+  }
+
+  Transition(int effectDuration, int holdDuration) : Transition(effectDuration, effectDuration, holdDuration) {
+  }
+
+  Transition(int effectInDuration, int effectOutDuration, int holdDuration) {
+    this->effectInDuration = effectInDuration;
+    this->effectOutDuration = effectOutDuration;
+    this->holdDuration = holdDuration;
+    this->started = 0;
+    this->end = 0;
+  }
+
+  void start(unsigned long now) {
+    if (end < now) {
+      this->started = now;
+      this->end = getEnd();
+      saveCurrentDisplayType(); 
+    }
+    // else we are already running!
+  }
+
+  boolean isMessageOnDisplay(unsigned long now)
+  {
+    return (now < end);
+  }
+
+  // we need to get the seconds updated, otherwise we show the old
+  // time at the end of the stunt
+  void updateRegularDisplaySeconds() {
+    regularDisplay[5] = second() % 10;
+    regularDisplay[4] = second() / 10;
+  }
+
+  boolean scrollMsg(unsigned long now)
+  {
+    if (now < end) {
+      int msCount = now - started;
+      if (msCount < effectInDuration) {
+        loadRegularValues();
+        // Scroll -1 -> -6
+        scroll(-(msCount % effectInDuration) * 6 / effectInDuration - 1);
+      } else if (msCount < effectInDuration * 2) {
+        loadAlternateValues();
+        // Scroll 5 -> 0
+        scroll(5 - (msCount % effectInDuration) * 6 / effectInDuration);
+      } else if (msCount < effectInDuration * 2 + holdDuration) {
+        loadAlternateValues();
+      } else if (msCount < effectInDuration * 2 + holdDuration + effectOutDuration) {
+        loadAlternateValues();
+        // Scroll 1 -> 6
+        scroll(((msCount - holdDuration) % effectOutDuration) * 6 / effectOutDuration + 1);
+      } else if (msCount < effectInDuration * 2 + holdDuration + effectOutDuration * 2) {
+        loadRegularValues();
+        // Scroll 0 -> -5
+        scroll(((msCount - holdDuration) % effectOutDuration) * 6 / effectOutDuration - 5);
+      }
+
+      return true;  // we are still running
+    }
+
+    return false;   // We aren't running
+  }
+
+  boolean scrambleMsg(unsigned long now)
+  {
+    if (now < end) {
+      int msCount = now - started;
+      if (msCount < effectInDuration) {
+        loadRegularValues();
+        scramble(msCount, 5 - (msCount % effectInDuration) * 6 / effectInDuration, 6);
+      } else if (msCount < effectInDuration * 2) {
+        loadAlternateValues();
+        scramble(msCount, 0, 5 - (msCount % effectInDuration) * 6 / effectInDuration);
+      } else if (msCount < effectInDuration * 2 + holdDuration) {
+        loadAlternateValues();
+      } else if (msCount < effectInDuration * 2 + holdDuration + effectOutDuration) {
+        loadAlternateValues();
+        scramble(msCount, 0, ((msCount - holdDuration) % effectOutDuration) * 6 / effectOutDuration + 1);
+      } else if (msCount < effectInDuration * 2 + holdDuration + effectOutDuration * 2) {
+        loadRegularValues();
+        scramble(msCount, ((msCount - holdDuration) % effectOutDuration) * 6 / effectOutDuration + 1, 6);
+      }
+      return true;  // we are still running
+    }
+    return false;   // We aren't running
+  }
+
+  boolean scrollInScrambleOut(unsigned long now)
+  {
+    if (now < end) {
+      int msCount = now - started;
+      if (msCount < effectInDuration) {
+        loadRegularValues();
+        scroll(-(msCount % effectInDuration) * 6 / effectInDuration - 1);
+      } else if (msCount < effectInDuration * 2) {
+        restoreCurrentDisplayType();
+        loadAlternateValues();
+        scroll(5 - (msCount % effectInDuration) * 6 / effectInDuration);
+      } else if (msCount < effectInDuration * 2 + holdDuration) {
+        loadAlternateValues();
+      } else if (msCount < effectInDuration * 2 + holdDuration + effectOutDuration) {
+        loadAlternateValues();
+        scramble(msCount, 0, ((msCount - holdDuration) % effectOutDuration) * 6 / effectOutDuration + 1);
+      } else if (msCount < effectInDuration * 2 + holdDuration + effectOutDuration * 2) {
+        loadRegularValues();
+        scramble(msCount, ((msCount - holdDuration) % effectOutDuration) * 6 / effectOutDuration + 1, 6);
+      }
+      return true;  // we are still running
+    }
+    return false;   // We aren't running
+  }
+
+  /**
+   * +ve scroll right
+   * -ve scroll left
+   */
+  static int scroll(char count) {
+    byte copy[6] = {0, 0, 0, 0, 0, 0};
+    memcpy(copy, NumberArray, sizeof(copy));
+    char offset = 0;
+    char slope = 1;
+    if (count < 0) {
+      count = -count;
+      offset = 5;
+      slope = -1;
+    }
+    for (char i=0; i<6; i++) {
+      if (i < count) {
+        displayType[offset + i * slope] = BLANKED;
+      }
+      if (i >= count) {
+        NumberArray[offset + i * slope] = copy[offset + (i-count) * slope];
+      }
+    }
+
+    return count;
+  }
+
+  static unsigned long hash(unsigned long x) {
+    x = ((x >> 16) ^ x) * 0x45d9f3b;
+    x = ((x >> 16) ^ x) * 0x45d9f3b;
+    x = (x >> 16) ^ x;
+    return x;
+  }
+
+  // In these functions we want something that changes quickly
+  // hence msCount/20. Plus it needs to be different for different
+  // indices, hence +i. Plus it needs to be 'random', hence hash function
+  static int scramble(int msCount, byte start, byte end) {
+    for (int i=start; i < end; i++) {
+      NumberArray[i] = hash(msCount / 20 + i) % 10;
+    }
+
+    return start;
+  }
+
+  void setRegularValues() {
+    memcpy(regularDisplay, NumberArray, sizeof(regularDisplay));    
+  }
+  
+  void setAlternateValues() {
+    memcpy(alternateDisplay, NumberArray, sizeof(alternateDisplay));    
+  }
+
+  void loadRegularValues() {
+    memcpy(NumberArray, regularDisplay, sizeof(regularDisplay));    
+  }
+
+  void loadAlternateValues() {
+    memcpy(NumberArray, alternateDisplay, sizeof(alternateDisplay));    
+  }
+  
+  void saveCurrentDisplayType() {
+    memcpy(savedDisplayType, displayType, sizeof(savedDisplayType));  
+    savedScrollback = scrollback;
+    scrollback = false;
+  }
+  
+  void restoreCurrentDisplayType() {
+    memcpy(displayType, savedDisplayType, sizeof(savedDisplayType));
+    scrollback = savedScrollback;
+  }
+  
+protected:
+  /**** Don't let Joe Public see this stuff ****/
+
+  int effectInDuration;  // How long an effect should take in ms
+  int effectOutDuration; // How long an effect should take in ms
+  int holdDuration;      // How long the message should be displayed for in ms
+  unsigned long started; // When we were started (timestamp)
+  unsigned long end;     // When the whole thing will end (timestamp)
+
+  /**
+   * The end time has to match what displayMessage() wants,
+   * so let sub-classes override it.
+   */
+  unsigned long getEnd() {
+    return started + effectInDuration * 2 + holdDuration + effectOutDuration * 2;
+  }
+
+  // buffer variables for doing the scrolling/scrambling with
+  byte regularDisplay[6] = {0, 0, 0, 0, 0, 0};
+  byte alternateDisplay[6] = {0, 0, 0, 0, 0, 0};
+  boolean savedScrollback;
+  byte savedDisplayType[6] = {FADE, FADE, FADE, FADE, FADE, FADE};
+};
+
 Transition transition(500, 1000, 3000);
+
+//**********************************************************************************
+
+// Structure for encapsulating button debounce and management
+struct Button {
+  public:
+    // Constructor
+    Button(byte newInputPin, boolean newActiveLow) : inputPin(0), activeLow(false) {
+      inputPin = newInputPin;
+      activeLow = newActiveLow;
+    }
+
+    // ************************************************************
+    // MAIN BUTTON CHECK ENTRY POINT - should be called periodically
+    // See if the button was pressed and debounce. We perform a
+    // sort of preview here, then confirm by releasing. We track
+    // 3 lengths of button press: momentarily, 1S and 2S.
+    // ************************************************************
+    void checkButton(unsigned long nowMillis) {
+      checkButtonInternal(nowMillis);
+    }
+
+    // ************************************************************
+    // Reset everything
+    // ************************************************************
+    void reset() {
+      resetInternal();
+    }
+
+    // ************************************************************
+    // Check if button is pressed right now (just debounce)
+    // ************************************************************
+    boolean isButtonPressedNow() {
+      return button1PressedCount == debounceCounter;
+    }
+
+    // ************************************************************
+    // Check if button is pressed momentarily
+    // ************************************************************
+    boolean isButtonPressed() {
+      return buttonPress;
+    }
+
+    // ************************************************************
+    // Check if button is pressed for a long time (> 1S)
+    // ************************************************************
+    boolean isButtonPressed1S() {
+      return buttonPress1S;
+    }
+
+    // ************************************************************
+    // Check if button is pressed for a moderately long time (> 2S)
+    // ************************************************************
+    boolean isButtonPressed2S() {
+      return buttonPress2S;
+    }
+
+    // ************************************************************
+    // Check if button is pressed for a very long time (> 8S)
+    // ************************************************************
+    boolean isButtonPressed8S() {
+      return buttonPress8S;
+    }
+
+    // ************************************************************
+    // Check if button is pressed for a short time (> 200mS) and released
+    // ************************************************************
+    boolean isButtonPressedAndReleased() {
+      if (buttonPressRelease) {
+        buttonPressRelease = false;
+        return true;
+      } else {
+        return false;
+      }
+    }
+
+    // ************************************************************
+    // Check if button is pressed for a long time (> 2) and released
+    // ************************************************************
+    boolean isButtonPressedReleased1S() {
+      if (buttonPressRelease1S) {
+        buttonPressRelease1S = false;
+        return true;
+      } else {
+        return false;
+      }
+    }
+
+    // ************************************************************
+    // Check if button is pressed for a very moderately time (> 2) and released
+    // ************************************************************
+    boolean isButtonPressedReleased2S() {
+      if (buttonPressRelease2S) {
+        buttonPressRelease2S = false;
+        return true;
+      } else {
+        return false;
+      }
+    }
+
+    // ************************************************************
+    // Check if button is pressed for a very long time (> 8) and released
+    // ************************************************************
+    boolean isButtonPressedReleased8S() {
+      if (buttonPressRelease8S) {
+        buttonPressRelease8S = false;
+        return true;
+      } else {
+        return false;
+      }
+    }
+
+  private:
+    byte inputPin;
+    boolean activeLow;
+
+    int  button1PressedCount = 0;
+    unsigned long button1PressStartMillis = 0;
+    const byte debounceCounter = 5; // Number of successive reads before we say the switch is down
+    boolean buttonWasReleased = false;
+    boolean buttonPress8S = false;
+    boolean buttonPress2S = false;
+    boolean buttonPress1S = false;
+    boolean buttonPress = false;
+    boolean buttonPressRelease8S = false;
+    boolean buttonPressRelease2S = false;
+    boolean buttonPressRelease1S = false;
+    boolean buttonPressRelease = false;
+
+    void checkButtonInternal(unsigned long nowMillis) {
+      if (digitalRead(inputPin) == 0) {
+        buttonWasReleased = false;
+
+        // We need consecutive pressed counts to treat this is pressed
+        if (button1PressedCount < debounceCounter) {
+          button1PressedCount += 1;
+          // If we reach the debounce point, mark the start time
+          if (button1PressedCount == debounceCounter) {
+            button1PressStartMillis = nowMillis;
+          }
+        } else {
+          // We are pressed and held, maintain the press states
+          if ((nowMillis - button1PressStartMillis) > 8000) {
+            buttonPress8S = true;
+            buttonPress2S = true;
+            buttonPress1S = true;
+            buttonPress = true;
+          } else if ((nowMillis - button1PressStartMillis) > 2000) {
+            buttonPress8S = false;
+            buttonPress2S = true;
+            buttonPress1S = true;
+            buttonPress = true;
+          } else if ((nowMillis - button1PressStartMillis) > 1000) {
+            buttonPress8S = false;
+            buttonPress2S = false;
+            buttonPress1S = true;
+            buttonPress = true;
+          } else {
+            buttonPress8S = false;
+            buttonPress2S = false;
+            buttonPress1S = false;
+            buttonPress = true;
+          }
+        }
+      } else {
+        // mark this as a press and release if we were pressed for less than a long press
+        if (button1PressedCount == debounceCounter) {
+          buttonWasReleased = true;
+
+          buttonPressRelease8S = false;
+          buttonPressRelease2S = false;
+          buttonPressRelease1S = false;
+          buttonPressRelease = false;
+
+          if (buttonPress8S) {
+            buttonPressRelease8S = true;
+          } else if (buttonPress2S) {
+            buttonPressRelease2S = true;
+          } else if (buttonPress1S) {
+            buttonPressRelease1S = true;
+          } else if (buttonPress) {
+            buttonPressRelease = true;
+          }
+        }
+
+        // Reset the switch flags debounce counter
+        buttonPress8S = false;
+        buttonPress2S = false;
+        buttonPress1S = false;
+        buttonPress = false;
+        button1PressedCount = 0;
+      }
+    }
+
+    void resetInternal() {
+      buttonPressRelease8S = false;
+      buttonPressRelease2S = false;
+      buttonPressRelease1S = false;
+      buttonPressRelease = false;
+      buttonPress8S = false;
+      buttonPress2S = false;
+      buttonPress1S = false;
+      buttonPress = false;
+      button1PressedCount = 0;
+    }
+};
 
 // ********************** HV generator variables *********************
 int hvTargetVoltage = HVGEN_TARGET_VOLTAGE_DEFAULT;
@@ -340,7 +796,7 @@ int pwmOn = PWM_PULSE_DEFAULT;
 // correct.
 #define NOT_AIO_REV1 // [AIO_REV1,NOT_AIO_REV1]
 
-// Used for special mappings of the K155ID1 -> digit (wiring aid)
+// Used for special mappings of the 74141 -> digit (wiring aid)
 // allows the board wiring to be much simpler
 #ifdef AIO_REV1 
   // This is a mapping for All-In-One Revision 1 ONLY! Not generally used.
@@ -417,6 +873,8 @@ boolean useLDR = true;
 // RTC, uses Analogue pins A4 (SDA) and A5 (SCL)
 DS3231 Clock;
 
+#define RTC_I2C_ADDRESS 0x68
+
 // State variables for detecting changes
 byte lastSec;
 unsigned long nowMillis = 0;
@@ -431,8 +889,9 @@ unsigned long blankSuppressedSelectionTimoutMillis = 0;   // Used for determinin
 boolean hourMode = false;
 boolean triggeredThisSec = false;
 
-byte useRTC = false;  // true if we detect an RTC
-byte useWiFi = 0; // the number of minutes ago we recevied information from the WiFi module, 0 = don't use WiFi
+boolean useRTC = false;  // true if we detect an RTC
+boolean useWiFi = false; // true if we have recevied information from the WiFi module
+
 
 // **************************** LED management ***************************
 boolean upOrDown;
@@ -450,8 +909,14 @@ byte bluCnl = COLOUR_BLU_CNL_DEFAULT;
 byte cycleCount = 0;
 byte cycleSpeed = CYCLE_SPEED_DEFAULT;
 
-// Back light cycling
 int colors[3];
+
+// Strateg2
+//float hueIncrement = 0.0;
+//int hueCount = 0;
+//float hue = 0.0;
+
+// Strategy 3
 int changeSteps = 0;
 byte currentColour = 0;
 
@@ -459,7 +924,7 @@ int impressionsPerSec = 0;
 int lastImpressionsPerSec = 0;
 
 // ********************** Input switch management **********************
-ClockButton button1(inputPin1, false);
+Button button1(inputPin1, false);
 
 // **************************** digit healing ****************************
 // This is a special mode which repairs cathode poisoning by driving a
@@ -532,6 +997,7 @@ void setup()
   // Set the driver pin to putput
   pinMode(hvDriverPin, OUTPUT);
 
+  //Serial.begin(115200);
   /* disable global interrupts while we set up them up */
   cli();
 
@@ -562,6 +1028,11 @@ void setup()
 
   // **********************************************************************
 
+  // Test if the button is pressed for factory reset
+  for (int i = 0 ; i < 20 ; i++ ) {
+    button1.checkButton(nowMillis);
+  }
+
   // Set up the PRNG with something so that it looks random
   randomSeed(analogRead(LDRPin));
 
@@ -585,7 +1056,7 @@ void setup()
     // mark that we have done the EEPROM setup
     EEPROM.write(EE_NEED_SETUP, true);
   }
-
+  
   // If the button is held down while we are flashing, then do the test pattern
   boolean doTestPattern = false;
 
@@ -621,11 +1092,10 @@ void setup()
 
   if (doTestPattern) {
     boolean oldUseLDR = useLDR;
-    byte oldBacklightMode = backlightMode;
-
+    
     // reset the EEPROM values
     factoryReset();
-
+    
     // turn off LDR
     useLDR = false;
 
@@ -640,9 +1110,6 @@ void setup()
 
     boolean inLoop = true;
 
-    // We don't want to stay in test mode forever
-    long startTestMode = lastCheckMillis;
-
     while (inLoop) {
       nowMillis = millis();
       if (nowMillis - lastCheckMillis > 1000) {
@@ -650,25 +1117,17 @@ void setup()
         secCount++;
         secCount = secCount % 10;
       }
-
-      // turn off test mode
-      blankTubes = (nowMillis - startTestMode > TEST_MODE_MAX_MS);
-
       loadNumberArraySameValue(secCount);
       outputDisplay();
       checkHVVoltage();
-
       setLedsTestPattern(nowMillis);
       button1.checkButton(nowMillis);
-
       if (button1.isButtonPressedNow() && (secCount == 8)) {
         inLoop = false;
-        blankTubes = false;
       }
     }
 
     useLDR = oldUseLDR;
-    backlightMode = oldBacklightMode;
   }
 
   // reset the LEDs
@@ -697,7 +1156,31 @@ void setup()
   // initialise the internal time (in case we don't find the time provider)
   nowMillis = millis();
   setTime(12, 34, 56, 1, 3, 2017);
-  getRTCTime();
+
+  // Start the RTC communication
+  Wire.begin();
+
+  // Set up the time provider
+  // first try to find the RTC, if not available, go into slave mode
+  Wire.beginTransmission(RTC_I2C_ADDRESS);
+  if (Wire.endTransmission() == 0) {
+    // Make sure the clock keeps running even on battery
+    Clock.enableOscillator(true, true, 0);
+
+    // show that we are using the RTC
+    useRTC = true;
+  } else {
+    // Wait for I2C in slave mode
+    Wire.end();
+    Wire.begin(I2C_SLAVE_ADDR);
+    Wire.onReceive(receiveEvent);
+    Wire.onRequest(requestEvent);
+  }
+
+  // Recover the time from the RTC
+  if (useRTC) {
+    getRTCTime();
+  }
 
   // Show the version for 1 s
   tempDisplayMode = TEMP_MODE_VERSION;
@@ -778,7 +1261,7 @@ void loop()
     saveEEPROMValues();
 
     // Preset the display
-    allFadeOrNormal(DO_NOT_APPLY_LEAD_0_BLANK);
+    allFadeOrNormal(false);
 
     nextMode = currentMode;
   } else if (button1.isButtonPressedReleased1S()) {
@@ -791,7 +1274,7 @@ void loop()
       saveEEPROMValues();
 
       // Preset the display
-      allFadeOrNormal(DO_NOT_APPLY_LEAD_0_BLANK);
+      allFadeOrNormal(false);
     }
 
     nextMode = currentMode;
@@ -803,6 +1286,16 @@ void loop()
   } else {
     processCurrentMode();
   }
+
+  //check the multi-button input - added by S.Ferguson
+  //For 1st button:
+  if( buttonLastChecked == 0 ) // see if this is the first time checking the buttons
+     buttonLastChecked = millis()+BUTTONDELAY;  // force a check this cycle
+   if( millis() - buttonLastChecked > BUTTONDELAY ) { // make sure a reasonable delay passed
+     getMultiButtonPress();
+     buttonLastChecked = millis(); // reset the lastChecked value
+   }
+
 
   // get the LDR ambient light reading
   digitOffCount = getDimmingFromLDR();
@@ -903,14 +1396,8 @@ void performOncePerSecondProcessing() {
 // Called once per minute
 // ************************************************************
 void performOncePerMinuteProcessing() {
-  if (useWiFi > 0) {
-    if (useWiFi == MAX_WIFI_TIME) {
-      // We recently got an update, send to the RTC (if installed)
-      setRTC();      
-    }
-    useWiFi--;
-  } else {
-    // get the time from the external RTC provider - (if installed)
+  // get the time from the external provider - slow but accurate
+  if (useRTC) {
     getRTCTime();
   }
 }
@@ -1015,11 +1502,11 @@ void setNextMode() {
   switch (nextMode) {
     case MODE_TIME: {
         loadNumberArrayTime();
-        allFadeOrNormal(APPLY_LEAD_0_BLANK);
+        allFadeOrNormal(true);
         break;
       }
     case MODE_HOURS_SET: {
-        if (useWiFi > 0) {
+        if (useWiFi) {
           // skip past the time settings
           nextMode++;
           currentMode++;
@@ -1043,7 +1530,7 @@ void setNextMode() {
         break;
       }
     case MODE_DAYS_SET: {
-        if (useWiFi > 0) {
+        if (useWiFi) {
           // skip past the time settings
           nextMode++;
           currentMode++;
@@ -1288,10 +1775,12 @@ void processCurrentMode() {
           }
 
           if (tempDisplayMode == TEMP_MODE_TEMP) {
-            byte timeProv = 10;
-            if (useRTC) timeProv += 1;
-            if (useWiFi > 0) timeProv += 2;
-            loadNumberArrayTemp(timeProv);
+            if (useRTC) {
+              loadNumberArrayTemp(MODE_TEMP);
+            } else {
+              // we can't show the temperature if we don't have the RTC, just skip
+              tempDisplayMode++;
+            }
           }
 
           if (tempDisplayMode == TEMP_MODE_LDR) {
@@ -1299,32 +1788,36 @@ void processCurrentMode() {
           }
 
           if (tempDisplayMode == TEMP_MODE_VERSION) {
-            loadNumberArrayConfInt(SOFTWARE_VERSION, 0);
+            loadNumberArrayConfInt(SOFTWARE_VERSION, currentMode - MODE_12_24);
           }
 
           if (tempDisplayMode == TEMP_IP_ADDR12) {
-            if (useWiFi > 0) {
-              loadNumberArrayIP(ourIP[0], ourIP[1]);
-            } else {
+            if (useRTC) {
               // we can't show the IP address if we have the RTC, just skip
               tempDisplayMode++;
+            } else {
+              loadNumberArrayIP(ourIP[0], ourIP[1]);
             }
           }
 
           if (tempDisplayMode == TEMP_IP_ADDR34) {
-            if (useWiFi > 0) {
-              loadNumberArrayIP(ourIP[2], ourIP[3]);
-            } else {
+            if (useRTC) {
               // we can't show the IP address if we have the RTC, just skip
               tempDisplayMode++;
+            } else {
+              loadNumberArrayIP(ourIP[2], ourIP[3]);
             }
           }
 
           if (tempDisplayMode == TEMP_IMPR) {
-            loadNumberArrayConfInt(lastImpressionsPerSec, 0);
+            if (useRTC) {
+              tempDisplayMode = TEMP_MODE_MIN;
+            } else {
+              loadNumberArrayConfInt(lastImpressionsPerSec, currentMode - MODE_12_24);
+            }
           }
 
-          allFadeOrNormal(DO_NOT_APPLY_LEAD_0_BLANK);
+          allFadeOrNormal(false);
 
         } else {
           if (acpOffset > 0) {
@@ -1339,12 +1832,11 @@ void processCurrentMode() {
                 transition.setAlternateValues();
                 loadNumberArrayTime();
                 transition.setRegularValues();
-                allFadeOrNormal(DO_NOT_APPLY_LEAD_0_BLANK);
+                allFadeOrNormal(false);
 
                 transition.start(nowMillis);
               }
 
-              // initialise the slots mode
               boolean msgDisplaying;
               switch (slotsMode) {
                 case SLOTS_MODE_1M_SCR_SCR:
@@ -1355,7 +1847,7 @@ void processCurrentMode() {
               }
 
               if (msgDisplaying) {
-                transition.updateRegularDisplaySeconds(second());
+                transition.updateRegularDisplaySeconds();
               } else {
                 // do normal time thing when we are not in slots
                 loadNumberArrayTime();
@@ -2049,7 +2541,6 @@ void SetSN74141Chip(int num1)
 // Do a single complete display, including any fading and
 // dimming requested. Performs the display loop
 // DIGIT_DISPLAY_COUNT times for each digit, with no delays.
-// This is the heart of the display processing!
 // ************************************************************
 void outputDisplay()
 {
@@ -2459,6 +2950,22 @@ void incMins() {
 }
 
 // ************************************************************
+// decrement the time by 1 min  - added by S.Ferguson
+// ************************************************************
+void decMins() {
+  byte tmpMins = minute();
+  tmpMins--;
+  if(tmpMins >= MINS_MAX){
+      tmpMins = MINS_MAX - 1;
+  }else if (tmpMins <= 0) {
+      tmpMins = MINS_MAX;
+  }
+ // Serial.println(tmpMins);
+  setTime(hour(), tmpMins, 0, day(), month(), year());
+  setRTC();
+}
+
+// ************************************************************
 // increment the time by 1 hour
 // ************************************************************
 void incHours() {
@@ -2467,6 +2974,22 @@ void incHours() {
 
   if (tmpHours >= HOURS_MAX) {
     tmpHours = 0;
+  }
+  setTime(tmpHours, minute(), second(), day(), month(), year());
+  setRTC();
+}
+
+// ************************************************************
+// decrement the time by 1 hour - added by S.Ferguson
+// ************************************************************
+void decHours() {
+  byte tmpHours = hour();
+  tmpHours--;
+
+  if(tmpHours >= HOURS_MAX){
+      tmpHours = HOURS_MAX - 1;
+  }else if (tmpHours <= 0) {
+      tmpHours = HOURS_MAX;
   }
   setTime(tmpHours, minute(), second(), day(), month(), year());
   setRTC();
@@ -2669,37 +3192,23 @@ void setLedsTestPattern(unsigned long currentMillis) {
 // Get the time from the RTC
 // ************************************************************
 void getRTCTime() {
-  // Start the RTC communication in master mode
-  Wire.end();
-  Wire.begin();
 
-  // Set up the time provider
-  // first try to find the RTC, if not available, go into slave mode
-  Wire.beginTransmission(RTC_I2C_ADDRESS);
-  useRTC = (Wire.endTransmission() == 0);
   if (useRTC) {
-    bool PM;
-    bool twentyFourHourClock;
-    bool century = false;
+    Wire.beginTransmission(RTC_I2C_ADDRESS);
+    if (Wire.endTransmission() == 0) {
+      bool PM;
+      bool twentyFourHourClock;
+      bool century = false;
 
-    byte years = Clock.getYear() + 2000;
-    byte months = Clock.getMonth(century);
-    byte days = Clock.getDate();
-    byte hours = Clock.getHour(twentyFourHourClock, PM);
-    byte mins = Clock.getMinute();
-    byte secs = Clock.getSecond();
-    setTime(hours, mins, secs, days, months, years);
-
-    // Make sure the clock keeps running even on battery
-    if (!Clock.oscillatorCheck())
-      Clock.enableOscillator(true, true, 0);
+      byte years = Clock.getYear() + 2000;
+      byte months = Clock.getMonth(century);
+      byte days = Clock.getDate();
+      byte hours = Clock.getHour(twentyFourHourClock, PM);
+      byte mins = Clock.getMinute();
+      byte secs = Clock.getSecond();
+      setTime(hours, mins, secs, days, months, years);
+    }
   }
-
-  // Return back to I2C in slave mode
-  Wire.end();
-  Wire.begin(I2C_SLAVE_ADDR);
-  Wire.onReceive(receiveEvent);
-  Wire.onRequest(requestEvent);
 }
 
 // ************************************************************
@@ -2709,13 +3218,6 @@ void getRTCTime() {
 // ************************************************************
 void setRTC() {
   if (useRTC) {
-    // Start the RTC communication in master mode
-    Wire.end();
-    Wire.begin();
-
-    // Set up the time provider
-    // first try to find the RTC, if not available, go into slave mode
-    Wire.beginTransmission(RTC_I2C_ADDRESS);
     Clock.setClockMode(false); // false = 24h
     Clock.setYear(year() % 100);
     Clock.setMonth(month());
@@ -2724,12 +3226,6 @@ void setRTC() {
     Clock.setHour(hour());
     Clock.setMinute(minute());
     Clock.setSecond(second());
-
-    Wire.endTransmission();
-    Wire.end();
-    Wire.begin(I2C_SLAVE_ADDR);
-    Wire.onReceive(receiveEvent);
-    Wire.onRequest(requestEvent);
   }
 }
 
@@ -2968,20 +3464,10 @@ void factoryReset() {
 // ************************************************************
 void checkHVVoltage() {
   if (getSmoothedHVSensorReading() > rawHVADCThreshold) {
-    setPWMTopTime(pwmTop + getInc());
+    setPWMTopTime(pwmTop + 1);
   } else {
-    setPWMTopTime(pwmTop - getInc());
+    setPWMTopTime(pwmTop - 1);
   }
-}
-
-// Get the increment value we are going to use based on the magnitude of the 
-// difference we have measured
-int getInc() {
-  int diffValue = abs(getSmoothedHVSensorReading() - rawHVADCThreshold);
-  int incValue = 1;
-  if (diffValue > 20) incValue = 50;
-  else if (diffValue > 10) incValue = 5;
-  return incValue;  
 }
 
 // ************************************************************
@@ -3015,7 +3501,8 @@ int getRawHVADCThreshold(double targetVoltage) {
 // ******************************************************************
 int getDimmingFromLDR() {
   if (useLDR) {
-    int rawSensorVal = 1023 - analogRead(LDRPin);
+    //int rawSensorVal = 1023 - analogRead(LDRPin);
+    int rawSensorVal = 1023-50;   //set to brightness instead of using LDR added by S. Ferguson
     double sensorDiff = rawSensorVal - sensorLDRSmoothed;
     sensorLDRSmoothed += (sensorDiff / sensorSmoothCountLDR);
 
@@ -3032,6 +3519,45 @@ int getDimmingFromLDR() {
   } else {
     return DIGIT_DISPLAY_OFF;  
   }
+}
+
+//**********************************************************************************
+//**********************************************************************************
+//*                          Multi Button Input     - added by S.Ferguson                        *
+//**********************************************************************************
+//**********************************************************************************
+
+// ******************************************************************
+// Check the 4-button input to see if hour adjustment or second adjustment
+// was pressed
+//
+// The resistor network consists of 4 differing resistors that this function
+// reads, hour is incremented/decremented depending on hour up or hour down
+// being pressed.
+// Additionally minute up or minute down is incremented/decremented depending
+// on button press
+// ******************************************************************
+int getMultiButtonPress() {
+  int val = 0;         // variable to store the read value
+   val = analogRead(LDRPin);   // read the analog input pin
+   if( val >= (550-ERROR_WINDOW) and val <= (650+ERROR_WINDOW) ) {  
+      decHours();                                   //6800 ohms
+     return 1;
+   }
+   else if ( val >= (707-ERROR_WINDOW) and val <= (782+ERROR_WINDOW) ) { 
+      incHours();
+     return 2;                                        //4700 ohms
+   }
+   else if ( val >= (977-ERROR_WINDOW) and val <= (978+ERROR_WINDOW) ) { 
+      incMins();
+     return 3;                                        //3300 ohms
+   }
+   else if ( val >= (913-ERROR_WINDOW) and val <= (916+ERROR_WINDOW) ) { 
+      decMins();
+     return 4;                                      //1200 ohms
+   }
+   else
+     return 0;  // no button pushed
 }
 
 // ******************************************************************
@@ -3095,7 +3621,7 @@ void calibrateHVG() {
   setPWMOnTime(PWM_PULSE_MIN);
   for (int i = 0 ; i < 768 ; i++ ) {
     //loadNumberArray8s();
-    loadNumberArrayConfInt(pwmOn, 0);
+    loadNumberArrayConfInt(pwmOn, currentMode - MODE_12_24);
     allBright();
     outputDisplay();
 
@@ -3113,7 +3639,7 @@ void calibrateHVG() {
   setPWMOnTime(pwmOn + 50);
   for (int i = 0 ; i < 768 ; i++ ) {
     //loadNumberArray8s();
-    loadNumberArrayConfInt(pwmOn, 0);
+    loadNumberArrayConfInt(pwmOn, currentMode - MODE_12_24);
     allBright();
     outputDisplay();
 
@@ -3218,16 +3744,16 @@ int getSmoothedHVSensorReading() {
 //**********************************************************************************
 
 /**
- * receive information from the master
- */
-void receiveEvent(int bytes) {
+   receive information from the master
+*/
+void receiveEvent(int bytes) {  
   // the operation tells us what we are getting
   int operation = Wire.read();
 
   if (operation == I2C_TIME_UPDATE) {
-    // If we're getting time from the WiFi module, mark that we have an active WiFi with a 5 min time out
-    useWiFi = MAX_WIFI_TIME;
-
+    // If we're getting time from the WiFi module, don't allow the time to be set manually
+    useWiFi = true;
+    
     int newYears = Wire.read();
     int newMonths = Wire.read();
     int newDays = Wire.read();
@@ -3304,12 +3830,6 @@ void receiveEvent(int bytes) {
   } else if (operation == I2C_SET_OPTION_SLOTS_MODE) {
     slotsMode = Wire.read();
     EEPROM.write(EE_SLOTS_MODE, slotsMode);
-  } else if (operation == I2C_SET_OPTION_MIN_DIM) {
-    byte dimHI = Wire.read();
-    byte dimLO = Wire.read();
-    minDim = dimHI * 256 + dimLO;
-    EEPROM.write(EE_MIN_DIM_HI, dimHI);
-    EEPROM.write(EE_MIN_DIM_LO, dimLO);
   }
 }
 
@@ -3317,9 +3837,9 @@ void receiveEvent(int bytes) {
    send information to the master
 */
 void requestEvent() {
-  byte configArray[I2C_DATA_SIZE];
+  byte configArray[20];
   int idx = 0;
-  configArray[idx++] = I2C_PROTOCOL_NUMBER;  // protocol version
+  configArray[idx++] = 48;  // protocol version
   configArray[idx++] = encodeBooleanForI2C(hourMode);
   configArray[idx++] = encodeBooleanForI2C(blankLeading);
   configArray[idx++] = encodeBooleanForI2C(scrollback);
@@ -3339,10 +3859,8 @@ void requestEvent() {
   configArray[idx++] = encodeBooleanForI2C(useLDR);
   configArray[idx++] = blankMode;
   configArray[idx++] = slotsMode;
-  configArray[idx++] = minDim / 256;
-  configArray[idx++] = minDim % 256;
 
-  Wire.write(configArray, I2C_DATA_SIZE);
+  Wire.write(configArray, 20);
 }
 
 byte encodeBooleanForI2C(boolean valueToProcess) {
